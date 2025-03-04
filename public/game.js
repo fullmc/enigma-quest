@@ -16,6 +16,10 @@ let playerCountText;
 let playerName;
 let startButton;
 let playersList;
+let answerInput;
+let submitButton;
+let resultText;
+let gameStarted = false;
 
 function preload() {
     // Charger les assets (images, sons, etc.)
@@ -25,7 +29,10 @@ function create() {
     socket = io();
     
     // Demander le nom du joueur
-    const playerName = prompt("Entrez votre nom :");
+    playerName = prompt("Entrez votre nom :");
+    if (!playerName) {
+        playerName = "Joueur" + Math.floor(Math.random() * 1000);
+    }
     socket.emit('newPlayer', playerName);
 
     // Afficher le nombre de joueurs
@@ -45,10 +52,11 @@ function create() {
         fontSize: '24px',
         fill: '#00ff00'
     });
-    startButton.setInteractive();
+    startButton.setInteractive({ useHandCursor: true });
     startButton.visible = false;
     
     startButton.on('pointerdown', () => {
+        console.log('Bouton démarrer cliqué');
         socket.emit('startGame');
     });
 
@@ -60,13 +68,17 @@ function create() {
 
     // Écouteurs socket
     socket.on('playerCount', (count) => {
+        console.log('Nombre de joueurs:', count);
         playerCountText.setText(`Joueurs connectés : ${count}`);
         startButton.visible = count >= 2;
     });
 
     socket.on('gameStarting', () => {
+        console.log('La partie commence!');
         startButton.visible = false;
         playerCountText.setText('La partie commence !');
+        answerInput.style.display = 'block';
+        submitButton.visible = true;
     });
 
     socket.on('receiveClue', (clue) => {
@@ -83,6 +95,71 @@ function create() {
             playersText += `${index + 1}. ${player}\n`;
         });
         playersList.setText(playersText);
+    });
+
+    // Ajouter le champ de réponse (initialement caché)
+    const inputElement = document.createElement('input');
+    inputElement.type = 'text';
+    inputElement.placeholder = 'Entrez votre réponse';
+    inputElement.style.position = 'absolute';
+    inputElement.style.left = '50px';
+    inputElement.style.top = '400px';
+    inputElement.style.display = 'none';
+    document.body.appendChild(inputElement);
+    answerInput = inputElement;
+
+    // Ajouter le bouton de soumission
+    submitButton = this.add.text(50, 450, '[ Soumettre la réponse ]', {
+        fontSize: '20px',
+        fill: '#00ff00'
+    });
+    submitButton.setInteractive();
+    submitButton.visible = false;
+
+    // Texte pour le résultat
+    resultText = this.add.text(50, 500, '', {
+        fontSize: '20px',
+        fill: '#ffffff'
+    });
+
+    submitButton.on('pointerdown', () => {
+        const answer = answerInput.value;
+        socket.emit('submitAnswer', answer);
+        answerInput.value = '';
+    });
+
+    // Nouveaux écouteurs socket
+    socket.on('answerResult', (result) => {
+        resultText.setText(result.message);
+        if (result.correct) {
+            resultText.setColor('#00ff00');
+        } else {
+            resultText.setColor('#ff0000');
+        }
+    });
+
+    socket.on('gameWon', (winner) => {
+        resultText.setText(`Bravo ! ${winner} a trouvé la bonne réponse !`);
+        resultText.setColor('#00ff00');
+        answerInput.style.display = 'none';
+        submitButton.visible = false;
+    });
+
+    socket.on('startGameError', (error) => {
+        console.log('Erreur de démarrage:', error.message);
+        resultText.setText(error.message);
+        resultText.setColor('#ff0000');
+    });
+
+    socket.on('gameEnded', (reason) => {
+        console.log('Fin de partie:', reason);
+        gameStarted = false;
+        startButton.visible = players.size >= 2;
+        answerInput.style.display = 'none';
+        submitButton.visible = false;
+        resultText.setText(reason);
+        resultText.setColor('#ff0000');
+        clueText.setText('');
     });
 }
 
